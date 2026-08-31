@@ -1,5 +1,16 @@
+# Rust / Cargo
 target/
-Cargo.lock
+
+# Editor
 *.swp
 .idea/
 .vscode/
+
+# RustRover / rustfmt
+**/*.rs.bk
+
+# MSVC
+*.pdb
+
+# Cargo mutants
+**/mutants.out*/
