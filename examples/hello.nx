@@ -1,0 +1,7 @@
+fn main() {
+    stck x: i32 = 42
+
+    if x > 10 {
+        printf("Hello Nox")
+    }
+}
