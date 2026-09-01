@@ -147,6 +147,30 @@ impl TypeChecker {
                         }
                     }
 
+                    BinaryOperator::NotEqual => {
+                        if left_type == right_type {
+                            Ok(Type::Bool)
+                        } else {
+                            Err("Binary operator requires operands of the same type.".to_string())
+                        }
+                    }
+
+                    BinaryOperator::And => {
+                        if left_type == Type::Bool && right_type == Type::Bool {
+                            Ok(Type::Bool)
+                        } else {
+                            Err("Binary operator requires operands of the same type.".to_string())
+                        }
+                    }
+
+                    BinaryOperator::Or => {
+                        if left_type == Type::Bool && right_type == Type::Bool {
+                            Ok(Type::Bool)
+                        } else {
+                            Err("Binary operator requires operands of the same type.".to_string())
+                        }
+                    }
+
                     _ => {
                         Err("This binary operator is not implemented yet".to_string())
                     }                

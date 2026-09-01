@@ -13,7 +13,7 @@ use token::Token;
 use type_checker::TypeChecker;
 
 fn main() {
-    let source: String = "stck x: bool = 5 >= true".to_string();
+    let source: String = "stck x: bool = 5 != 5".to_string();
 
     let mut lexer: Lexer = Lexer::new(source);
 
