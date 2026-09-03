@@ -31,7 +31,7 @@ impl TypeChecker {
                             }
                         }
                     }
-                    _ => self.infer_expression_type(value)?,
+                    _ => self.infer_expression_type(value, Some(expected_type))?,
                 };
 
                 if !self.types_compatible(expected_type, &actual_type) {
@@ -47,9 +47,22 @@ impl TypeChecker {
     }
     }
 
-    fn infer_expression_type(&self, expression: &Expression) -> Result<Type, String> {
+    fn infer_expression_type(&self, expression: &Expression, expected_type: Option<&Type>) -> Result<Type, String> {
         match expression {
-            Expression::Integer(_) => Ok(Type::I32),
+            Expression::Integer(_) => {
+                match expected_type {
+                    Some(ty) if self.is_numeric(ty) => Ok(ty.clone()),
+                    _ => Ok(Type::I32)
+                }
+            }
+
+            Expression::Float(_) => {
+                match expected_type {
+                    Some(ty) if matches!(ty, Type::F32 | Type::F64) => Ok(ty.clone()),
+                    _ => Ok(Type::F64),
+                }
+            }
+
             Expression::Boolean(_) => Ok(Type::Bool),
             Expression::Nil => Err("Cannot infer the type of nil".to_string()),
 
@@ -63,12 +76,12 @@ impl TypeChecker {
                 right,
             } => {
                 
-                let left_type = self.infer_expression_type(left)?;
-                let right_type = self.infer_expression_type(right)?;
+                let left_type = self.infer_expression_type(left, None)?;
+                let right_type = self.infer_expression_type(right, None)?;
                 
                 match operator {
                     BinaryOperator::Add => {
-                        if left_type == Type::I32 && right_type == Type::I32 {
+                        if self.is_numeric(&left_type) && left_type == right_type {
                             Ok(Type::I32)
                         } else {
                             Err("Binary operator requires operands of the same type.".to_string())
@@ -76,7 +89,7 @@ impl TypeChecker {
                     }
 
                     BinaryOperator::Subtract => {
-                        if left_type == Type::I32 && right_type == Type::I32 {
+                        if self.is_numeric(&left_type) && left_type == right_type {
                             Ok(Type::I32)
                         } else {
                             Err("Binary operator requires operands of the same type.".to_string())
@@ -84,7 +97,7 @@ impl TypeChecker {
                     }
 
                     BinaryOperator::Multiply => {
-                        if left_type == Type::I32 && right_type == Type::I32 {
+                        if self.is_numeric(&left_type) && left_type == right_type {
                             Ok(Type::I32)
                         } else {
                             Err("Binary operator requires operands of the same type.".to_string())
@@ -92,7 +105,7 @@ impl TypeChecker {
                     }
 
                     BinaryOperator::Divide => {
-                        if left_type == Type::I32 && right_type == Type::I32 {
+                        if self.is_numeric(&left_type) && left_type == right_type {
                             Ok(Type::I32)
                         } else {
                             Err("Binary operator requires operands of the same type.".to_string())
@@ -100,7 +113,7 @@ impl TypeChecker {
                     }
                     
                     BinaryOperator::Modulo => {
-                        if left_type == Type::I32 && right_type == Type::I32 {
+                        if self.is_numeric(&left_type) && left_type == right_type {
                             Ok(Type::I32)
                         } else {
                             Err("Binary operator requires operands of the same type.".to_string())
@@ -186,5 +199,22 @@ impl TypeChecker {
 
     fn types_compatible(&self, expected: &Type, actual: &Type) -> bool {
         expected == actual
+    }
+
+    fn is_numeric(&self, ty: &Type) -> bool {
+        match ty {
+             Type::I8
+            | Type::I16
+            | Type::I32 
+            | Type::I64
+            | Type::U8
+            | Type::U16
+            | Type::U32
+            | Type::U64
+            | Type::F32
+            | Type::F64 => true,
+
+            _ => false
+        }
     }
 }

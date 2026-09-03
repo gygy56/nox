@@ -93,9 +93,54 @@ impl Parser {
 
     fn parse_type(&mut self) -> Result<Type, String> {
         let mut ty = match self.current() {
+            Some(Token::I8) => {
+                self.advance();
+                Type::I8
+            }
+
+            Some(Token::I16) => {
+                self.advance();
+                Type::I16
+            }
+
             Some(Token::I32) => {
                 self.advance();
                 Type::I32
+            }
+
+            Some(Token::I64) => {
+                self.advance();
+                Type::I64
+            }
+
+            Some(Token::U8) => {
+                self.advance();
+                Type::U8
+            }
+
+            Some(Token::U16) => {
+                self.advance();
+                Type::U16
+            }
+
+            Some(Token::U32) => {
+                self.advance();
+                Type::U32
+            }
+
+            Some(Token::U64) => {
+                self.advance();
+                Type::U64
+            }
+
+            Some(Token::F32) => {
+                self.advance();
+                Type::F32
+            }
+
+            Some(Token::F64) => {
+                self.advance();
+                Type::F64
             }
 
             Some(Token::Bool) => {
@@ -197,7 +242,7 @@ impl Parser {
                 operator: BinaryOperator::BitOr,
                 right: Box::new(right),
             };
-        }
+        } 
 
         Ok(left)
     }
@@ -351,6 +396,13 @@ impl Parser {
                 self.advance();
 
                 Ok(Expression::Integer(value))
+            }
+
+            Some(Token::Float(value)) => {
+                let value = *value;
+                self.advance();
+                
+                Ok(Expression::Float(value))
             }
 
             Some(Token::Ident(name)) => {
