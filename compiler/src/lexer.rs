@@ -274,7 +274,7 @@ impl Lexer {
 
         if self.position < self.source.len()
             && self.source[self.position] == '.'
-            && self.peek_next().is_some_and(|c| c.is_ascii_digit())
+            && self.peek().is_some_and(|c| c.is_ascii_digit())
         {
             self.position += 1;
 
@@ -294,7 +294,7 @@ impl Lexer {
                     number, start
                 )
             })?;
-
+            
             return Ok(Token::Float(value));
         }
 

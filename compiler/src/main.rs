@@ -13,7 +13,10 @@ use token::Token;
 use type_checker::TypeChecker;
 
 fn main() {
-    let source: String = "stck x = 3.14".to_string();
+    let source: String = r#"stck x: i32 = 10
+    stck y: f64 = 3.0
+    stck z = x + y"#.to_string();
+
 
     let mut lexer: Lexer = Lexer::new(source);
 
@@ -37,7 +40,7 @@ fn main() {
     match parser.parse() {
         Ok(program) => {
             println!("\nAST:");
-            let checker = TypeChecker::new();
+            let mut checker = TypeChecker::new();
 
             match checker.check(&program) {
                 Ok(()) => println!("Type check: OK"),

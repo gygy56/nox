@@ -1,13 +1,18 @@
 use crate::{ast::{BinaryOperator, Expression, Program, Statement, Type}, token::Token::Else};
+use std::collections::HashMap;
 
-pub struct TypeChecker;
+pub struct TypeChecker {
+    variables: HashMap<String, Type>,
+}
 
 impl TypeChecker {
     pub  fn new() -> Self {
-        Self
+        Self {
+            variables: HashMap::new(),
+        }
     }
 
-    pub fn check(&self, program: &Program) -> Result<(), String> {
+    pub fn check(&mut self, program: &Program) -> Result<(), String> {
         for statement in &program.statements {
             self.check_statement(statement)?;
         }
@@ -15,25 +20,31 @@ impl TypeChecker {
         Ok(())
     }
 
-    fn check_statement(&self, statement: &Statement) -> Result<(), String> {
+    fn check_statement(&mut self, statement: &Statement) -> Result<(), String> {
     match statement {
         Statement::VariableDeclaration { name, ty, value } => {
-            if let Some(expected_type) = ty {
-                let actual_type = match value {
-                    Expression::Nil => {
-                        match expected_type {
-                            Type::Optional(_) => expected_type.clone(),
-                            _ => {
-                                return Err(format!(
-                                    "Type error '{}': nil requires an optional type",
-                                    name
-                                ));
+            let actual_type = match ty {
+                Some(expected_type) => {
+                    match value {
+                        Expression::Nil => {
+                            match expected_type {
+                                Type::Optional(_) => expected_type.clone(),
+                                _ => {
+                                    return Err(format!(
+                                        "Type error '{}': nil requires an optional type",
+                                        name
+                                    ));
+                                }
                             }
                         }
+                        _ => self.infer_expression_type(value, Some(expected_type))?,
                     }
-                    _ => self.infer_expression_type(value, Some(expected_type))?,
-                };
+                }
 
+                None => self.infer_expression_type(value, None)?,
+            };
+
+            if let Some(expected_type) = ty {
                 if !self.types_compatible(expected_type, &actual_type) {
                     return Err(format!(
                         "Type error '{}': expected {:?}, found {:?}",
@@ -42,10 +53,12 @@ impl TypeChecker {
                 }
             }
 
+            self.variables.insert(name.clone(), actual_type);
+
             Ok(())
         }
     }
-    }
+}
 
     fn infer_expression_type(&self, expression: &Expression, expected_type: Option<&Type>) -> Result<Type, String> {
         match expression {
@@ -67,7 +80,10 @@ impl TypeChecker {
             Expression::Nil => Err("Cannot infer the type of nil".to_string()),
 
             Expression::Identifier(name) => {
-                Err(format!("Unknow variable '{}'", name))
+                match self.variables.get(name) {
+                    Some(ty) => Ok(ty.clone()),
+                    None => Err(format!("Unknow variable '{}'", name))
+                }
             }
 
             Expression::Binary {
@@ -76,98 +92,93 @@ impl TypeChecker {
                 right,
             } => {
                 
-                let left_type = self.infer_expression_type(left, None)?;
-                let right_type = self.infer_expression_type(right, None)?;
+                let left_type = self.infer_expression_type(left, expected_type)?;
+                let right_type = self.infer_expression_type(right, expected_type)?;
                 
                 match operator {
                     BinaryOperator::Add => {
-                        if self.is_numeric(&left_type) && left_type == right_type {
-                            Ok(Type::I32)
-                        } else {
-                            Err("Binary operator requires operands of the same type.".to_string())
+                        match self.numeric_result_type(&left_type, &right_type) {
+                            Some(result_type) => Ok(result_type),
+                            None => Err("Incompatible types for binary operator.".to_string()),
                         }
                     }
-
+                    
                     BinaryOperator::Subtract => {
-                        if self.is_numeric(&left_type) && left_type == right_type {
-                            Ok(Type::I32)
-                        } else {
-                            Err("Binary operator requires operands of the same type.".to_string())
+                        match self.numeric_result_type(&left_type, &right_type) {
+                            Some(result_type) => Ok(result_type),
+                            None => Err("Incompatible types for binary operator.".to_string()),
                         }
                     }
-
+                    
                     BinaryOperator::Multiply => {
-                        if self.is_numeric(&left_type) && left_type == right_type {
-                            Ok(Type::I32)
-                        } else {
-                            Err("Binary operator requires operands of the same type.".to_string())
+                        match self.numeric_result_type(&left_type, &right_type) {
+                            Some(result_type) => Ok(result_type),
+                            None => Err("Incompatible types for binary operator.".to_string()),
                         }
                     }
 
                     BinaryOperator::Divide => {
-                        if self.is_numeric(&left_type) && left_type == right_type {
-                            Ok(Type::I32)
-                        } else {
-                            Err("Binary operator requires operands of the same type.".to_string())
+                        match self.numeric_result_type(&left_type, &right_type) {
+                            Some(result_type) => Ok(result_type),
+                            None => Err("Incompatible types for binary operator.".to_string()),
                         }
                     }
-                    
+
                     BinaryOperator::Modulo => {
-                        if self.is_numeric(&left_type) && left_type == right_type {
-                            Ok(Type::I32)
-                        } else {
-                            Err("Binary operator requires operands of the same type.".to_string())
+                        match self.numeric_result_type(&left_type, &right_type) {
+                            Some(result_type) => Ok(result_type),
+                            None => Err("Incompatible types for binary operator.".to_string()),
                         }
                     }
 
                     BinaryOperator::Greater => {
-                        if left_type == right_type {
+                        if self.numeric_result_type(&left_type, &right_type).is_some() {
                             Ok(Type::Bool)
                         } else {
-                            Err("Binary operator requires operands of the same type.".to_string())
+                            Err("Incompatible types for comparison.".to_string())
                         }
                     }
 
                     BinaryOperator::Less => {
-                        if left_type == right_type {
+                        if self.numeric_result_type(&left_type, &right_type).is_some() {
                             Ok(Type::Bool)
                         } else {
-                            Err("Binary operator requires operands of the same type.".to_string())
+                            Err("Incompatible types for comparison.".to_string())
                         }
                     }
 
                     BinaryOperator::GreaterEqual => {
-                        if left_type == right_type {
+                        if self.numeric_result_type(&left_type, &right_type).is_some() {
                             Ok(Type::Bool)
                         } else {
-                            Err("Binary operator requires operands of the same type.".to_string())
+                            Err("Incompatible types for comparison.".to_string())
                         }
                     }
 
                     BinaryOperator::LessEqual => {
-                        if left_type == right_type {
+                        if self.numeric_result_type(&left_type, &right_type).is_some() {
                             Ok(Type::Bool)
                         } else {
-                            Err("Binary operator requires operands of the same type.".to_string())
+                            Err("Incompatible types for comparison.".to_string())
                         }
                     }
                     
                     BinaryOperator::Equal => {
-                        if left_type == right_type {
+                        if self.numeric_result_type(&left_type, &right_type).is_some() {
                             Ok(Type::Bool)
                         } else {
-                            Err("Binary operator requires operands of the same type.".to_string())
+                            Err("Incompatible types for comparison.".to_string())
                         }
                     }
 
                     BinaryOperator::NotEqual => {
-                        if left_type == right_type {
+                        if self.numeric_result_type(&left_type, &right_type).is_some() {
                             Ok(Type::Bool)
                         } else {
-                            Err("Binary operator requires operands of the same type.".to_string())
+                            Err("Incompatible types for comparison.".to_string())
                         }
                     }
-
+                    
                     BinaryOperator::And => {
                         if left_type == Type::Bool && right_type == Type::Bool {
                             Ok(Type::Bool)
@@ -215,6 +226,42 @@ impl TypeChecker {
             | Type::F64 => true,
 
             _ => false
+        }
+    }
+
+    fn numeric_result_type(&self, left: &Type, right: &Type) -> Option<Type> {
+        match (left, right) {
+            // signed
+            (Type::I8, Type::I8) => Some(Type::I8),
+            (Type::I8, Type::I16) | (Type::I16, Type::I8) => Some(Type::I16),
+            (Type::I8, Type::I32) | (Type::I32, Type::I8) => Some(Type::I32),
+            (Type::I8, Type::I64) | (Type::I64, Type::I8) => Some(Type::I64),
+            (Type::I16, Type::I16) => Some(Type::I16),
+            (Type::I16, Type::I32) | (Type::I32, Type::I16) => Some(Type::I32),
+            (Type::I16, Type::I64) | (Type::I64, Type::I16) => Some(Type::I64),
+            (Type::I32, Type::I32) => Some(Type::I32),
+            (Type::I32, Type::I64) | (Type::I64, Type::I32) => Some(Type::I64),
+            (Type::I64, Type::I64) => Some(Type::I64),
+
+            // unsigned
+            (Type::U8, Type::U8) => Some(Type::U8),
+            (Type::U8, Type::U16) | (Type::U16, Type::U8) => Some(Type::U16),
+            (Type::U8, Type::U32) | (Type::U32, Type::U8) => Some(Type::U32),
+            (Type::U8, Type::U64) | (Type::U64, Type::U8) => Some(Type::U64),
+            (Type::U16, Type::U16) => Some(Type::U16),
+            (Type::U16, Type::U32) | (Type::U32, Type::U16) => Some(Type::U32),
+            (Type::U16, Type::U64) | (Type::U64, Type::U16) => Some(Type::U64),
+            (Type::U32, Type::U32) => Some(Type::U32),
+            (Type::U32, Type::U64) | (Type::U64, Type::U32) => Some(Type::U64),
+            (Type::U64, Type::U64) => Some(Type::U64),
+
+            // floats
+            (Type::F32, Type::F32) => Some(Type::F32),
+            (Type::F32, Type::F64) | (Type::F64, Type::F32) => Some(Type::F64),
+            (Type::F64, Type::F64) => Some(Type::F64),
+
+            // incompatible families
+            _ => None,
         }
     }
 }
