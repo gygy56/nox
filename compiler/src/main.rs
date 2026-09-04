@@ -13,9 +13,7 @@ use token::Token;
 use type_checker::TypeChecker;
 
 fn main() {
-    let source: String = r#"stck x: i32 = 10
-    stck y: f64 = 3.0
-    stck z = x + y"#.to_string();
+    let source: String = r#"stck a = 10 / 3"#.to_string();
 
 
     let mut lexer: Lexer = Lexer::new(source);

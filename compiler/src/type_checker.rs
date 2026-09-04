@@ -118,9 +118,56 @@ impl TypeChecker {
                     }
 
                     BinaryOperator::Divide => {
-                        match self.numeric_result_type(&left_type, &right_type) {
-                            Some(result_type) => Ok(result_type),
-                            None => Err("Incompatible types for binary operator.".to_string()),
+                        match (&left_type, &right_type) {
+                            (Type::F32, Type::F32) => Ok(Type::F32),
+                            (Type::F32, Type::F64) => Ok(Type::F64),
+                            (Type::F64, Type::F32) => Ok(Type::F64),
+                            (Type::F64, Type::F64) => Ok(Type::F64),
+                            _ => Err("Division requires floating-point operands.".to_string()),
+                        }
+                    }
+
+                    BinaryOperator::IntegerDivide => {
+                        match (&left_type, &right_type) {
+                            (Type::I8, Type::I8)
+                            | (Type::I8, Type::I16)
+                            | (Type::I8, Type::I32)
+                            | (Type::I8, Type::I64)
+                            | (Type::I16, Type::I8)
+                            | (Type::I16, Type::I16)
+                            | (Type::I16, Type::I32)
+                            | (Type::I16, Type::I64)
+                            | (Type::I32, Type::I8)
+                            | (Type::I32, Type::I16)
+                            | (Type::I32, Type::I32)
+                            | (Type::I32, Type::I64)
+                            | (Type::I64, Type::I8)
+                            | (Type::I64, Type::I16)
+                            | (Type::I64, Type::I32)
+                            | (Type::I64, Type::I64)
+                            | (Type::U8, Type::U8)
+                            | (Type::U8, Type::U16)
+                            | (Type::U8, Type::U32)
+                            | (Type::U8, Type::U64)
+                            | (Type::U16, Type::U8)
+                            | (Type::U16, Type::U16)
+                            | (Type::U16, Type::U32)
+                            | (Type::U16, Type::U64)
+                            | (Type::U32, Type::U8)
+                            | (Type::U32, Type::U16)
+                            | (Type::U32, Type::U32)
+                            | (Type::U32, Type::U64)
+                            | (Type::U64, Type::U8)
+                            | (Type::U64, Type::U16)
+                            | (Type::U64, Type::U32)
+                            | (Type::U64, Type::U64) => {
+                                match self.numeric_result_type(&left_type, &right_type) {
+                                    Some(result_type) => Ok(result_type),
+                                    None => Err("Incompatible types for integer division.".to_string()),
+                                }
+                            }
+
+                            _ => Err("Integer division requires integer operands.".to_string()),
                         }
                     }
 
