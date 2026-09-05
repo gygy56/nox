@@ -56,9 +56,9 @@ impl TypeChecker {
             self.variables.insert(name.clone(), actual_type);
 
             Ok(())
+            }
         }
     }
-}
 
     fn infer_expression_type(&self, expression: &Expression, expected_type: Option<&Type>) -> Result<Type, String> {
         match expression {
@@ -256,9 +256,27 @@ impl TypeChecker {
     }
 
     fn types_compatible(&self, expected: &Type, actual: &Type) -> bool {
-        expected == actual
-    }
+        if expected == actual {
+            return true;
+        }
 
+        match (actual, expected) {
+            // Signed integer widening
+            (Type::I8, Type::I16 | Type::I32 | Type::I64) => true,
+            (Type::I16, Type::I32 | Type::I64) => true,
+            (Type::I32, Type::I64) => true,
+
+            // Unsigned integer widening
+            (Type::U8, Type::U16 | Type::U32 | Type::U64) => true,
+            (Type::U16, Type::U32 | Type::U64) => true,
+            (Type::U32, Type::U64) => true,
+
+            // Float widening
+            (Type::F32, Type::F64) => true,
+
+            _ => false,
+        }
+    }
     fn is_numeric(&self, ty: &Type) -> bool {
         match ty {
              Type::I8
