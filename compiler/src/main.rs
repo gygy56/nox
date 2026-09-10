@@ -13,7 +13,8 @@ use token::Token;
 use type_checker::TypeChecker;
 
 fn main() {
-    let source: String = r#"stck a = 10 / 3"#.to_string();
+    let source: String = r#"stck age: i32? = 42
+stck value: i32 = age.unwrap()"#.to_string();
 
 
     let mut lexer: Lexer = Lexer::new(source);

@@ -1,4 +1,4 @@
-use crate::{ast::{BinaryOperator, Expression, Program, Statement, Type}, token::Token::Else};
+use crate::{ast::{BinaryOperator, Expression, Program, Statement, Type, UnaryOperator}, token::Token::Else};
 use std::collections::HashMap;
 
 pub struct TypeChecker {
@@ -53,7 +53,12 @@ impl TypeChecker {
                 }
             }
 
-            self.variables.insert(name.clone(), actual_type);
+            let variable_type = match ty {
+                Some(expected_type) => expected_type.clone(),
+                None => actual_type,
+            };
+
+            self.variables.insert(name.clone(), variable_type);
 
             Ok(())
             }
@@ -225,7 +230,53 @@ impl TypeChecker {
                             Err("Incompatible types for comparison.".to_string())
                         }
                     }
-                    
+
+                    BinaryOperator::BitAnd
+                    | BinaryOperator::BitXor
+                    | BinaryOperator::BitOr => {
+                        match self.numeric_result_type(&left_type, &right_type) {
+                            Some(result_type) => {
+                                match result_type {
+                                    Type::I8
+                                    | Type::I16
+                                    | Type::I32
+                                    | Type::I64
+                                    | Type::U8
+                                    | Type::U16
+                                    | Type::U32
+                                    | Type::U64 => Ok(result_type),
+
+                                    _ => Err(
+                                        "Bitwise operators require integer operands."
+                                            .to_string()
+                                    ),
+                                }
+                            }
+
+                            None => Err(
+                                "Bitwise operators require compatible integer operands."
+                                    .to_string()
+                            ),
+                        }
+                    }
+
+                    BinaryOperator::ShiftLeft
+                    | BinaryOperator::ShiftRight => {
+                        match (&left_type, &right_type) {
+                            (
+                                Type::I8 | Type::I16 | Type::I32 | Type::I64
+                                | Type::U8 | Type::U16 | Type::U32 | Type::U64,
+                                Type::I8 | Type::I16 | Type::I32 | Type::I64
+                                | Type::U8 | Type::U16 | Type::U32 | Type::U64,
+                            ) => Ok(left_type.clone()),
+
+                            _ => Err(
+                                "Shift operators require integer operands."
+                                    .to_string()
+                            ),
+                        }
+                    }
+
                     BinaryOperator::And => {
                         if left_type == Type::Bool && right_type == Type::Bool {
                             Ok(Type::Bool)
@@ -249,8 +300,69 @@ impl TypeChecker {
                 }
             }
 
-            Expression::Unary { .. } => {
-                Err("Unary expressions are not implemented yet".to_string())
+            Expression::Unary { operator, operand } => {
+                let operand_type = self.infer_expression_type(operand, expected_type)?;
+
+                match operator {
+                    UnaryOperator::Negate => {
+                        match operand_type {
+                            Type::I8
+                            | Type::I16
+                            | Type::I32
+                            | Type::I64
+                            | Type::U8
+                            | Type::U16
+                            | Type::U32
+                            | Type::U64
+                            | Type::F32
+                            | Type::F64 => Ok(operand_type),
+
+                            _ => Err(
+                                "Negation requires a numeric operand."
+                                    .to_string()
+                            ),
+                        }
+                    }
+
+                    UnaryOperator::Not => {
+                        if operand_type == Type::Bool {
+                            Ok(Type::Bool)
+                        } else {
+                            Err(
+                                "Logical not requires a boolean operand."
+                                    .to_string()
+                            )
+                        }
+                    }
+                }
+            }
+
+            Expression::MethodCall {
+                object,
+                method,
+                arguments,
+            } => {
+                if !arguments.is_empty() {
+                    return Err("unwrap() does not take arguments.".to_string());
+                }
+
+                let object_type = self.infer_expression_type(object, expected_type)?;
+
+                match method.as_str() {
+                    "unwrap" => {
+                        match object_type {
+                            Type::Optional(inner) => Ok(*inner),
+                            _ => Err(
+                                "unwrap() requires an optional value.".to_string()
+                            ),
+                        }
+                    }
+
+                    _ => Err(format!(
+                        "Unknown method '{}'.",
+                        method
+                    )),
+                }
             }
         }
     }
@@ -260,7 +372,7 @@ impl TypeChecker {
             return true;
         }
 
-        match (actual, expected) {
+        match (expected, actual) {
             // Signed integer widening
             (Type::I8, Type::I16 | Type::I32 | Type::I64) => true,
             (Type::I16, Type::I32 | Type::I64) => true,
@@ -273,6 +385,11 @@ impl TypeChecker {
 
             // Float widening
             (Type::F32, Type::F64) => true,
+            
+            // T -> T?
+            (Type::Optional(expected_inner), actual) => {
+                self.types_compatible(expected_inner, actual)
+            }
 
             _ => false,
         }

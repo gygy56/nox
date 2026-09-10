@@ -68,6 +68,12 @@ pub enum Expression {
         operator: UnaryOperator,
         operand: Box<Expression>,
     },
+
+    MethodCall {
+        object: Box<Expression>,
+        method: String,
+        arguments: Vec<Expression>,
+    },
 }
 
 #[derive(Debug, Clone)]

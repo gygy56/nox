@@ -1,3 +1,5 @@
+use std::fmt::Arguments;
+
 use crate::ast::{
     BinaryOperator,
     Expression,
@@ -385,8 +387,75 @@ impl Parser {
                 })
             }
 
-            _ => self.parse_primary(),
+            _ => self.parse_postfix(),
         }
+    }
+
+    fn parse_postfix(&mut self) -> Result<Expression, String> {
+        let mut expression = self.parse_primary()?;
+        loop {
+            if self.check(&Token::Dot) {
+                self.advance();
+
+                let method= match self.current() {
+                    Some(Token::Ident(name)) => {
+                        let name = name.clone();
+                        self.advance();
+                        name
+                    }
+
+                    Some(token) => {
+                        return Err(format!(
+                            "Expected method name after '.', found {:?}",
+                            token
+                        ));
+                    }
+
+                    None => {
+                        return Err(
+                            "Expected method name after '.', found end of input"
+                                .to_string()
+                        );
+                    }
+                };
+
+                if !self.check(&Token::LeftParen) {
+                    return Err(
+                        "Expected '(' after method name".to_string()
+                    );
+                }
+
+                self.advance();
+
+                let mut arguments = Vec::new();
+
+                if !self.check(&Token::RightParen) {
+                    loop {
+                        arguments.push(self.parse_expression()?);
+
+                        if self.check(&Token::RightParen) {
+                            break;
+                        }
+
+                        return Err(
+                            "Expected '(' after method arguments".to_string()
+                        );
+                    }
+                }
+
+                self.advance();
+
+                expression = Expression::MethodCall {
+                    object: Box::new(expression),
+                    method,
+                    arguments,
+                };
+            } else {
+                break;
+            }
+        }
+
+        Ok(expression)
     }
 
     fn parse_primary(&mut self) -> Result<Expression, String> {
