@@ -1,5 +1,3 @@
-use std::fmt::Arguments;
-
 use crate::ast::{
     BinaryOperator,
     Expression,
@@ -535,5 +533,324 @@ impl Parser {
 
     fn check(&self, token: &Token) -> bool {
         self.current() == Some(token)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::Lexer;
+
+    fn parse(source: &str) -> Program {
+        let mut lexer = Lexer::new(source.to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        let mut parser = Parser::new(tokens);
+        parser.parse().unwrap()
+    }
+
+    #[test]
+    fn parse_simple_variable() {
+        let program = parse("stck x: i32 = 42");
+
+        assert_eq!(program.statements.len(), 1);
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { name, ty, value } => {
+                assert_eq!(name, "x");
+                assert_eq!(ty, &Some(Type::I32));
+                assert_eq!(value, &Expression::Integer(42));
+            }
+        }
+    }
+
+    #[test]
+    fn parse_inferred_variable() {
+        let program = parse("stck x = 42");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { name, ty, value } => {
+                assert_eq!(name, "x");
+                assert_eq!(ty, &None);
+                assert_eq!(value, &Expression::Integer(42));
+            }
+        }
+    }
+
+    #[test]
+    fn parse_optional_type() {
+        let program = parse("stck age: i32? = nil");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { ty, value, .. } => {
+                assert_eq!(ty, &Some(Type::Optional(Box::new(Type::I32))));
+                assert_eq!(value, &Expression::Nil);
+            }
+        }
+    }
+
+    #[test]
+    fn parse_arithmetic_precedence() {
+        let program = parse("stck x: i32 = 2 + 3 * 4");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { value, .. } => {
+                match value {
+                    Expression::Binary {
+                        operator: BinaryOperator::Add,
+                        left,
+                        right,
+                    } => {
+                        assert_eq!(**left, Expression::Integer(2));
+
+                        match &**right {
+                            Expression::Binary {
+                                operator: BinaryOperator::Multiply,
+                                left,
+                                right,
+                            } => {
+                                assert_eq!(**left, Expression::Integer(3));
+                                assert_eq!(**right, Expression::Integer(4));
+                            }
+                            _ => panic!("Expected multiplication"),
+                        }
+                    }
+                    _ => panic!("Expected addition"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn parse_parentheses() {
+        let program = parse("stck x: i32 = (2 + 3) * 4");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { value, .. } => {
+                match value {
+                    Expression::Binary {
+                        operator: BinaryOperator::Multiply,
+                        left,
+                        right,
+                    } => {
+                        assert!(matches!(
+                            &**left,
+                            Expression::Binary {
+                                operator: BinaryOperator::Add,
+                                ..
+                            }
+                        ));
+
+                        assert_eq!(**right, Expression::Integer(4));
+                    }
+                    _ => panic!("Expected multiplication"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn parse_unary_minus() {
+        let program = parse("stck x: i32 = -42");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { value, .. } => {
+                assert_eq!(
+                    value,
+                    &Expression::Unary {
+                        operator: UnaryOperator::Negate,
+                        operand: Box::new(Expression::Integer(42)),
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parse_logical_expression() {
+        let program = parse("stck x: bool = true and false or true");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { value, .. } => {
+                match value {
+                    Expression::Binary {
+                        operator: BinaryOperator::Or,
+                        left,
+                        right,
+                    } => {
+                        assert!(matches!(
+                            &**left,
+                            Expression::Binary {
+                                operator: BinaryOperator::And,
+                                ..
+                            }
+                        ));
+
+                        assert_eq!(**right, Expression::Boolean(true));
+                    }
+                    _ => panic!("Expected OR expression"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn parse_division_operators() {
+        let program = parse("stck x: i32 = 10 // 2");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { value, .. } => {
+                assert!(matches!(
+                    value,
+                    Expression::Binary {
+                        operator: BinaryOperator::IntegerDivide,
+                        ..
+                    }
+                ));
+            }
+        }
+
+        let program = parse("stck x: f64 = 10.0 / 2.0");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { value, .. } => {
+                assert!(matches!(
+                    value,
+                    Expression::Binary {
+                        operator: BinaryOperator::Divide,
+                        ..
+                    }
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn parse_comparison() {
+        let program = parse("stck x: bool = 10 < 20");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { value, .. } => {
+                assert!(matches!(
+                    value,
+                    Expression::Binary {
+                        operator: BinaryOperator::Less,
+                        ..
+                    }
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn parse_bitwise_expression() {
+        let program = parse("stck x: i32 = 1 & 2 | 4");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { value, .. } => {
+                assert!(matches!(
+                    value,
+                    Expression::Binary {
+                        operator: BinaryOperator::BitOr,
+                        ..
+                    }
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn parse_shift_expression() {
+        let program = parse("stck x: i32 = 1 << 2");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { value, .. } => {
+                assert!(matches!(
+                    value,
+                    Expression::Binary {
+                        operator: BinaryOperator::ShiftLeft,
+                        ..
+                    }
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn parse_method_call() {
+        let program = parse("stck x: i32 = age.unwrap()");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { value, .. } => {
+                assert_eq!(
+                    value,
+                    &Expression::MethodCall {
+                        object: Box::new(Expression::Identifier("age".to_string())),
+                        method: "unwrap".to_string(),
+                        arguments: Vec::new(),
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parse_chained_method_calls() {
+        let program = parse("stck x: i32 = age.unwrap().unwrap()");
+
+        match &program.statements[0] {
+            Statement::VariableDeclaration { value, .. } => {
+                match value {
+                    Expression::MethodCall {
+                        object,
+                        method,
+                        arguments,
+                    } => {
+                        assert_eq!(method, "unwrap");
+                        assert!(arguments.is_empty());
+
+                        assert!(matches!(
+                            &**object,
+                            Expression::MethodCall {
+                                method,
+                                arguments,
+                                ..
+                            } if method == "unwrap" && arguments.is_empty()
+                        ));
+                    }
+                    _ => panic!("Expected chained method calls"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn reject_invalid_statement() {
+        let mut lexer = Lexer::new("42".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        let mut parser = Parser::new(tokens);
+
+        assert!(parser.parse().is_err());
+    }
+
+    #[test]
+    fn reject_missing_equals() {
+        let mut lexer = Lexer::new("stck x: i32 42".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        let mut parser = Parser::new(tokens);
+
+        assert!(parser.parse().is_err());
+    }
+
+    #[test]
+    fn reject_missing_method_parentheses() {
+        let mut lexer = Lexer::new("stck x: i32 = age.unwrap".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        let mut parser = Parser::new(tokens);
+
+        assert!(parser.parse().is_err());
     }
 }

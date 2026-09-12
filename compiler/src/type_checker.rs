@@ -3,13 +3,27 @@ use std::collections::HashMap;
 
 pub struct TypeChecker {
     variables: HashMap<String, Type>,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum TypeCompatibility {
+    Exact,
+    Widening,
+    Narrowing,
+    Incompatible,
 }
 
 impl TypeChecker {
     pub  fn new() -> Self {
         Self {
             variables: HashMap::new(),
+            warnings: Vec::new(),
         }
+    }
+
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     pub fn check(&mut self, program: &Program) -> Result<(), String> {
@@ -21,13 +35,12 @@ impl TypeChecker {
     }
 
     fn check_statement(&mut self, statement: &Statement) -> Result<(), String> {
-    match statement {
-        Statement::VariableDeclaration { name, ty, value } => {
-            let actual_type = match ty {
-                Some(expected_type) => {
-                    match value {
-                        Expression::Nil => {
-                            match expected_type {
+        match statement {
+            Statement::VariableDeclaration { name, ty, value } => {
+                let actual_type = match ty {
+                    Some(expected_type) => {
+                        match value {
+                            Expression::Nil => match expected_type {
                                 Type::Optional(_) => expected_type.clone(),
                                 _ => {
                                     return Err(format!(
@@ -35,36 +48,127 @@ impl TypeChecker {
                                         name
                                     ));
                                 }
-                            }
+                            },
+
+                            _ => self.infer_expression_type(value, Some(expected_type))?,
                         }
-                        _ => self.infer_expression_type(value, Some(expected_type))?,
+                    }
+
+                    None => self.infer_expression_type(value, None)?,
+                };
+
+                if let Some(expected_type) = ty {
+                    match self.type_compatibility(expected_type, &actual_type) {
+                        TypeCompatibility::Exact => {}
+
+                        TypeCompatibility::Widening => {}
+
+                        TypeCompatibility::Narrowing => {
+                            self.warnings.push(format!(
+                                "Warning '{}': implicit narrowing conversion from {:?} to {:?}",
+                                name, actual_type, expected_type
+                            ));
+                        }
+
+                        TypeCompatibility::Incompatible => {
+                            return Err(format!(
+                                "Type error '{}': expected {:?}, found {:?}",
+                                name, expected_type, actual_type
+                            ));
+                        }
                     }
                 }
 
-                None => self.infer_expression_type(value, None)?,
-            };
+                let variable_type = match ty {
+                    Some(expected_type) => expected_type.clone(),
+                    None => actual_type,
+                };
 
-            if let Some(expected_type) = ty {
-                if !self.types_compatible(expected_type, &actual_type) {
-                    return Err(format!(
-                        "Type error '{}': expected {:?}, found {:?}",
-                        name, expected_type, actual_type
-                    ));
-                }
-            }
+                self.variables.insert(name.clone(), variable_type);
 
-            let variable_type = match ty {
-                Some(expected_type) => expected_type.clone(),
-                None => actual_type,
-            };
-
-            self.variables.insert(name.clone(), variable_type);
-
-            Ok(())
+                Ok(())
             }
         }
     }
 
+    fn types_compatible(&self, expected: &Type, actual: &Type) -> bool {
+        !matches!(
+            self.type_compatibility(expected, actual),
+            TypeCompatibility::Incompatible
+        )
+    }
+
+    fn type_compatibility(&self, expected: &Type, actual: &Type) -> TypeCompatibility {
+        if expected == actual {
+            return TypeCompatibility::Exact;
+        }
+
+        match (expected, actual) {
+            // ─────────────────────────────────────
+            // Signed integers
+            // ─────────────────────────────────────
+
+            // Widening: smaller → larger
+            (Type::I16, Type::I8)
+            | (Type::I32, Type::I8 | Type::I16)
+            | (Type::I64, Type::I8 | Type::I16 | Type::I32) => {
+                TypeCompatibility::Widening
+            }
+
+            // Narrowing: larger → smaller
+            (Type::I8, Type::I16 | Type::I32 | Type::I64)
+            | (Type::I16, Type::I32 | Type::I64)
+            | (Type::I32, Type::I64) => {
+                TypeCompatibility::Narrowing
+            }
+
+            // ─────────────────────────────────────
+            // Unsigned integers
+            // ─────────────────────────────────────
+
+            // Widening
+            (Type::U16, Type::U8)
+            | (Type::U32, Type::U8 | Type::U16)
+            | (Type::U64, Type::U8 | Type::U16 | Type::U32) => {
+                TypeCompatibility::Widening
+            }
+
+            // Narrowing
+            (Type::U8, Type::U16 | Type::U32 | Type::U64)
+            | (Type::U16, Type::U32 | Type::U64)
+            | (Type::U32, Type::U64) => {
+                TypeCompatibility::Narrowing
+            }
+
+            // ─────────────────────────────────────
+            // Floating point
+            // ─────────────────────────────────────
+
+            // Widening
+            (Type::F64, Type::F32) => TypeCompatibility::Widening,
+
+            // Narrowing
+            (Type::F32, Type::F64) => TypeCompatibility::Narrowing,
+
+            // ─────────────────────────────────────
+            // Optional
+            // ─────────────────────────────────────
+
+            // T → T?
+            (Type::Optional(expected_inner), actual) => {
+                match self.type_compatibility(expected_inner, actual) {
+                    TypeCompatibility::Exact
+                    | TypeCompatibility::Widening
+                    | TypeCompatibility::Narrowing => TypeCompatibility::Widening,
+
+                    TypeCompatibility::Incompatible => TypeCompatibility::Incompatible,
+                }
+            }
+
+            // Tout le reste est incompatible
+            _ => TypeCompatibility::Incompatible,
+        }
+    }
     fn infer_expression_type(&self, expression: &Expression, expected_type: Option<&Type>) -> Result<Type, String> {
         match expression {
             Expression::Integer(_) => {
@@ -87,10 +191,9 @@ impl TypeChecker {
             Expression::Identifier(name) => {
                 match self.variables.get(name) {
                     Some(ty) => Ok(ty.clone()),
-                    None => Err(format!("Unknow variable '{}'", name))
+                    None => Err(format!("Unknown variable '{}'", name)),
                 }
             }
-
             Expression::Binary {
                 left,
                 operator,
@@ -367,33 +470,6 @@ impl TypeChecker {
         }
     }
 
-    fn types_compatible(&self, expected: &Type, actual: &Type) -> bool {
-        if expected == actual {
-            return true;
-        }
-
-        match (expected, actual) {
-            // Signed integer widening
-            (Type::I8, Type::I16 | Type::I32 | Type::I64) => true,
-            (Type::I16, Type::I32 | Type::I64) => true,
-            (Type::I32, Type::I64) => true,
-
-            // Unsigned integer widening
-            (Type::U8, Type::U16 | Type::U32 | Type::U64) => true,
-            (Type::U16, Type::U32 | Type::U64) => true,
-            (Type::U32, Type::U64) => true,
-
-            // Float widening
-            (Type::F32, Type::F64) => true,
-            
-            // T -> T?
-            (Type::Optional(expected_inner), actual) => {
-                self.types_compatible(expected_inner, actual)
-            }
-
-            _ => false,
-        }
-    }
     fn is_numeric(&self, ty: &Type) -> bool {
         match ty {
              Type::I8
@@ -446,4 +522,257 @@ impl TypeChecker {
             _ => None,
         }
     }
+}
+
+// Tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+
+    fn check(source: &str) -> Result<(), String> {
+        let mut lexer = Lexer::new(source.to_string());
+        let tokens = lexer.tokenize()?;
+
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse()?;
+
+        let mut checker = TypeChecker::new();
+        checker.check(&program)
+    }
+
+    #[test]
+    fn accepts_basic_integer() {
+        assert!(check("stck x: i32 = 42").is_ok());
+    }
+
+    #[test]
+    fn accepts_inferred_integer() {
+        assert!(check("stck x = 42").is_ok());
+    }
+
+    #[test]
+    fn accepts_basic_float() {
+        assert!(check("stck x: f64 = 3.14").is_ok());
+    }
+
+    #[test]
+    fn accepts_numeric_addition() {
+        assert!(check("stck x: i32 = 10 + 20").is_ok());
+    }
+
+    #[test]
+    fn accepts_numeric_promotion() {
+        assert!(check("stck x: i64 = 10 + 20").is_ok());
+    }
+
+    #[test]
+    fn rejects_incompatible_addition() {
+        assert!(check("stck x: i32 = 10 + true").is_err());
+    }
+
+    #[test]
+    fn accepts_floating_division() {
+        assert!(check("stck x: f64 = 10.0 / 2.0").is_ok());
+    }
+
+    #[test]
+    fn rejects_integer_floating_division() {
+        assert!(check("stck x: i32 = 10 / 2").is_err());
+    }
+
+    #[test]
+    fn accepts_integer_division() {
+        assert!(check("stck x: i32 = 10 // 2").is_ok());
+    }
+
+    #[test]
+    fn rejects_integer_division_on_float() {
+        assert!(check("stck x: f64 = 10.0 // 2.0").is_err());
+    }
+
+    #[test]
+    fn accepts_boolean_logic() {
+        assert!(check("stck x: bool = true and false").is_ok());
+    }
+
+    #[test]
+    fn rejects_boolean_logic_on_integers() {
+        assert!(check("stck x: bool = 10 and 20").is_err());
+    }
+
+    #[test]
+    fn accepts_bitwise_operations() {
+        assert!(check("stck x: i32 = 10 & 3").is_ok());
+        assert!(check("stck x: i32 = 10 | 3").is_ok());
+        assert!(check("stck x: i32 = 10 ^ 3").is_ok());
+    }
+
+    #[test]
+    fn accepts_shift_operations() {
+        assert!(check("stck x: i32 = 10 << 2").is_ok());
+        assert!(check("stck x: i32 = 10 >> 2").is_ok());
+    }
+
+    #[test]
+    fn accepts_comparison() {
+        assert!(check("stck x: bool = 10 < 20").is_ok());
+        assert!(check("stck x: bool = 10 == 20").is_ok());
+    }
+
+    #[test]
+    fn accepts_optional_value() {
+        assert!(check("stck x: i32? = 42").is_ok());
+    }
+
+    #[test]
+    fn accepts_optional_nil() {
+        assert!(check("stck x: i32? = nil").is_ok());
+    }
+
+    #[test]
+    fn rejects_nil_without_optional() {
+        assert!(check("stck x: i32 = nil").is_err());
+    }
+
+    #[test]
+    fn rejects_optional_as_non_optional() {
+        assert!(check(
+            "stck a: i32? = 42
+             stck b: i32 = a"
+        ).is_err());
+    }
+
+    #[test]
+    fn accepts_unwrap() {
+        assert!(check(
+            "stck a: i32? = 42
+             stck b: i32 = a.unwrap()"
+        ).is_ok());
+    }
+
+    #[test]
+    fn rejects_unwrap_on_non_optional() {
+        assert!(check("stck a: i32 = 42
+                       stck b: i32 = a.unwrap()").is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_variable() {
+        assert!(check("stck x: i32 = unknown").is_err());
+    }
+
+    #[test]
+    fn accepts_unsigned_widening() {
+        assert!(check(
+            "stck a: u8 = 10
+             stck b: u64 = a"
+        ).is_ok());
+    }
+
+    #[test]
+    fn accepts_unsigned_narrowing() {
+        assert!(check(
+            "stck a: u64 = 10
+            stck b: u32 = a"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn accepts_signed_widening() {
+        assert!(check(
+            "stck a: i8 = 10
+            stck b: i64 = a"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn accepts_signed_narrowing() {
+        assert!(check(
+            "stck a: i64 = 10
+            stck b: i32 = a"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn accepts_float_widening() {
+        assert!(check(
+            "stck a: f32 = 10.0
+            stck b: f64 = a"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn accepts_float_narrowing() {
+        assert!(check(
+            "stck a: f64 = 10.0
+            stck b: f32 = a"
+        )
+        .is_ok());
+    }
+    
+    #[test]
+    fn widening_does_not_produce_warning() {
+        let mut lexer = Lexer::new(
+            "stck a: i8 = 10
+            stck b: i64 = a"
+                .to_string(),
+        );
+
+        let tokens = lexer.tokenize().unwrap();
+
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse().unwrap();
+
+        let mut checker = TypeChecker::new();
+
+        assert!(checker.check(&program).is_ok());
+        assert!(checker.warnings().is_empty());
+    }
+
+    #[test]
+    fn narrowing_produces_warning() {
+        let mut lexer = Lexer::new(
+            "stck a: i64 = 10
+            stck b: i32 = a"
+                .to_string(),
+        );
+
+        let tokens = lexer.tokenize().unwrap();
+
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse().unwrap();
+
+        let mut checker = TypeChecker::new();
+
+        assert!(checker.check(&program).is_ok());
+        assert_eq!(checker.warnings().len(), 1);
+
+        assert!(checker.warnings()[0].contains("narrowing"));
+    }
+
+    #[test]
+    fn exact_type_does_not_produce_warning() {
+        let mut lexer = Lexer::new(
+            "stck a: i32 = 10
+            stck b: i32 = a"
+                .to_string(),
+        );
+
+        let tokens = lexer.tokenize().unwrap();
+
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse().unwrap();
+
+        let mut checker = TypeChecker::new();
+
+        assert!(checker.check(&program).is_ok());
+        assert!(checker.warnings().is_empty());
+    }
+
 }

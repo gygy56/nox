@@ -422,3 +422,210 @@ impl Lexer {
         self.source.get(self.position + 2).copied()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::token::Token;
+
+    #[test]
+    fn lex_integer() {
+        let mut lexer = Lexer::new("42".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::Int(42),
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_float() {
+        let mut lexer = Lexer::new("3.14".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::Float(3.14),
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_integer_and_float() {
+        let mut lexer = Lexer::new("42 3.14".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::Int(42),
+            Token::Float(3.14),
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_division_operators() {
+        let mut lexer = Lexer::new("/ //".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::Slash,
+            Token::IntegerDivision,
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_boolean_literals() {
+        let mut lexer = Lexer::new("true false".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::True,
+            Token::False,
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_numeric_types() {
+        let mut lexer =
+            Lexer::new("i8 i16 i32 i64 u8 u16 u32 u64 f32 f64".to_string());
+
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::I8,
+            Token::I16,
+            Token::I32,
+            Token::I64,
+            Token::U8,
+            Token::U16,
+            Token::U32,
+            Token::U64,
+            Token::F32,
+            Token::F64,
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_keywords() {
+        let mut lexer = Lexer::new(
+            "fn stck const return if else elseif while for loop break continue"
+                .to_string(),
+        );
+
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::Fn,
+            Token::Stck,
+            Token::Const,
+            Token::Return,
+            Token::If,
+            Token::Else,
+            Token::ElseIf,
+            Token::While,
+            Token::For,
+            Token::Loop,
+            Token::Break,
+            Token::Continue,
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_comparison_operators() {
+        let mut lexer = Lexer::new("== != < > <= >=".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::EqualEqual,
+            Token::NotEqual,
+            Token::Less,
+            Token::Greater,
+            Token::LessEqual,
+            Token::GreaterEqual,
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_shift_operators() {
+        let mut lexer = Lexer::new("<< >>".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::ShiftLeft,
+            Token::ShiftRight,
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_string() {
+        let mut lexer = Lexer::new(r#""Hello""#.to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::String("Hello".to_string()),
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_string_escape() {
+        let mut lexer = Lexer::new(r#""Hello\nWorld""#.to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::String("Hello\nWorld".to_string()),
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_char() {
+        let mut lexer = Lexer::new("'A'".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::Char('A'),
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_nil_and_optional() {
+        let mut lexer = Lexer::new("nil ?".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::Nil,
+            Token::Question,
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn lex_method_call_tokens() {
+        let mut lexer = Lexer::new("age.unwrap()".to_string());
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens, vec![
+            Token::Ident("age".to_string()),
+            Token::Dot,
+            Token::Ident("unwrap".to_string()),
+            Token::LeftParen,
+            Token::RightParen,
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn reject_unknown_character() {
+        let mut lexer = Lexer::new("@".to_string());
+
+        assert!(lexer.tokenize().is_err());
+    }
+}

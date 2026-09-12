@@ -18,7 +18,7 @@ pub enum Type {
     Optional(Box<Type>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOperator {
     Add,
     Subtract,
@@ -44,13 +44,13 @@ pub enum BinaryOperator {
     Or,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOperator {
     Negate,
     Not,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Integer(i64),
     Identifier(String),
